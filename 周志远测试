@@ -1,0 +1,59 @@
+//下载测试程序：
+    https://github.com/horovod/horovod/blob/master/examples/tensorflow_synthetic_benchmark.py
+    //单机单卡
+    python3 tensorflow_synthetic_benchmark.py --model=resnet50 --batch-size=128 --num-iters=500
+
+    //单机多卡
+    cat single_process.sh
+    #!/bin/bash
+
+    lrank=$OMPI_COMM_WORLD_LOCAL_RANK
+
+    APP="python3 tensorflow_synthetic_benchmark.py --model=resnet50 --batch-size=128 --num-iters=500"
+    case ${lrank} in
+    [0])
+    export HIP_VISIBLE_DEVICES=0,1,2,3
+    export UCX_NET_DEVICES=mlx5_0:1
+    export UCX_IB_PCI_BW=mlx5_0:50Gbs
+    numactl --cpunodebind=0 --membind=0 ${APP}
+    ;;
+    [1])
+    export HIP_VISIBLE_DEVICES=0,1,2,3
+    export UCX_NET_DEVICES=mlx5_1:1
+    export UCX_IB_PCI_BW=mlx5_1:50Gbs
+    numactl --cpunodebind=1 --membind=1 ${APP}
+    ;;
+    [2])
+    export HIP_VISIBLE_DEVICES=0,1,2,3
+    export UCX_NET_DEVICES=mlx5_2:1
+    export UCX_IB_PCI_BW=mlx5_2:50Gbs
+    numactl --cpunodebind=2 --membind=2 ${APP}
+    ;;
+    [3])
+    export HIP_VISIBLE_DEVICES=0,1,2,3
+    export UCX_NET_DEVICES=mlx5_3:1
+    export UCX_IB_PCI_BW=mlx5_3:50Gbs
+    numactl --cpunodebind=3 --membind=3 ${APP}
+    ;;
+    esac
+
+    mpirun -np 4 ./single_process.sh
+
+    //多机多卡，结合调度系统使用
+    #!/bin/bash
+    #SBATCH -p debug
+    #SBATCH -N 16
+    #SBATCH -J xuan-tf
+    #SBATCH -n 512
+    #SBATCH --gres=加速卡:4
+
+    hostfile=./$SLURM_JOB_ID
+    scontrol show hostnames $SLURM_JOB_NODELIST > ${hostfile}
+    for i in `cat ./${hostfile}`
+    do
+        echo ${i} slots=4 >> ./hostfile-dl-$SLURM_JOB_ID    ((num_node=${num_node}+1))
+    done
+    echo "resnet50 node is " ${num_node}
+    ((num_加速卡=${num_node}*4))
+
+    mpirun -np ${num_加速卡} ./single_process.h
